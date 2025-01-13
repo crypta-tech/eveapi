@@ -27,13 +27,14 @@ use Seat\Eveapi\Jobs\AbstractAuthCharacterJob;
 use Seat\Eveapi\Mapping\Structures\UniverseStructureMapping;
 use Seat\Eveapi\Models\RefreshToken;
 use Seat\Eveapi\Models\Universe\UniverseStructure;
+use Laravel\Horizon\Contracts\Silenced;
 
 /**
  * Class Citadels.
  *
  * @package Seat\Eveapi\Jobs\Universe
  */
-class Citadel extends AbstractAuthCharacterJob
+class Citadel extends AbstractAuthCharacterJob implements Silenced
 {
     /**
      * HTTP 403 is frequent for Citadel jobs. Decrease RATE_LIMIT to not starve out other jobs.
@@ -90,7 +91,23 @@ class Citadel extends AbstractAuthCharacterJob
         if(UniverseStructure::find($this->structure_id) !== null) return;
 
         // check if the acl cache allows refetching the structure
-        if(! CacheCitadelAccessCache::canAccess($this->getCharacterId(), $this->structure_id)) return;
+        if(! CacheCitadelAccessCache::canAccess($this->getCharacterId(), $this->structure_id)) {
+            logger()->debug(
+                sprintf('[Jobs][CitadelAccessCache][%s] Citadel Access Cache -> Blocking Access', $this->job->getJobId()),
+                [
+                    'citadel_id' => $this->structure_id,
+                    'character_id' => $this->getCharacterId(),
+                ]);
+            return;
+        } else {
+            logger()->debug(
+                sprintf('[Jobs][CitadelAccessCache][%s] Citadel Access Cache -> Allowing Access', $this->job->getJobId()),
+                [
+                    'citadel_id' => $this->structure_id,
+                    'character_id' => $this->getCharacterId(),
+                ]);
+        }
+
 
         try {
             // attempt to resolve the structure
